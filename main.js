@@ -2,24 +2,26 @@ import './styles/style.css'
 import * as THREE from 'three'
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
 const canvas = document.querySelector('.webgl');
 const scene = new THREE.Scene();
 const gltfLoader = new GLTFLoader()
 const sizes = { width: window.innerWidth, height: window.innerHeight }
-let blenderCamera = new THREE.PerspectiveCamera(50, sizes.width / sizes.height, 0.1, 1000)
-
+let blenderCamera = new THREE.PerspectiveCamera(40, sizes.width / sizes.height, 0.1, 1000)
+const controls = new OrbitControls(blenderCamera, canvas)
 
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     alpha: true,
-    antialias: true,
+    antialias: true
 })
 
+const minPan = new THREE.Vector3( -.1, -.1, -.1 )
+const maxPan = new THREE.Vector3( .1, .1, .1 )
 const effect = new OutlineEffect( renderer )
 let mixer
 let clock = new THREE.Clock()
-
 
 //original shader: https://github.com/craftzdog/ghibli-style-shader
 const vertexShader = `
@@ -38,8 +40,6 @@ const vertexShader = `
         gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
     }
 `
-
-
 const fragmentShader = `
     precision highp float;
     precision highp int;
@@ -76,58 +76,56 @@ const fragmentShader = `
     }
 `
 
-gltfLoader.load(
-    'anime.glb',
-    (gltf) => {
-        gltf.scene.traverse( child => {
-
-            if(child.isMesh) {
-                console.log(child.material.name)
-                const shaderMaterial = new THREE.ShaderMaterial({
-                    uniforms: {
-                        colorMap: { value: [] },
-                        brightnessThresholds: {
-                            value: [0.7, 0.2, 0.0001]
+const getModel = () => {
+    gltfLoader.load(
+        'anime.glb',
+        (gltf) => {
+            gltf.scene.traverse( child => {
+                if(child.isMesh) {
+                    const shaderMaterial = new THREE.ShaderMaterial({
+                        uniforms: {
+                            colorMap: { value: [] },
+                            brightnessThresholds: {
+                                value: [0.7, 0.2, 0.0001]
+                            },
+                            lightPosition: { value: new THREE.Vector3(-15, 15, 10) }
                         },
-                        lightPosition: { value: new THREE.Vector3(-15, 15, 5) }
-                    },
-                    vertexShader,
-                    fragmentShader,
-                })
+                        vertexShader,
+                        fragmentShader,
+                    })
 
-                shaderMaterial.userData.outlineParameters = {
-                    thickness: 0.00075,
-                    color: [0, 0, 0],
-                    alpha: 1,
-                    keepAlive: true,
-                    visible: true
+                    shaderMaterial.userData.outlineParameters = {
+                        thickness: 0.00085,
+                        color: [0, 0, 0],
+                        alpha: 1,
+                        keepAlive: true,
+                        visible: true
+                    }
+                    
+                    shaderMaterial.uniforms.colorMap.value = getMaterials(child.material.name)
+                    
+                    child.material = shaderMaterial
+                    child.castShadow = true
                 }
-                
-                shaderMaterial.uniforms.colorMap.value = getMaterials(child.material.name)
-                 
-                child.material = shaderMaterial
-                child.castShadow = true
-            }
-        })
-       
-        blenderCamera = gltf.cameras[0]
+            })
 
-        const animations = gltf.animations
-        mixer = new THREE.AnimationMixer(gltf.scene)
-        animations.forEach( clip => mixer.clipAction(clip).play())
-
-        scene.add(blenderCamera)
-        scene.add(gltf.scene)
-
-    }
-)
+            const animations = gltf.animations
+            mixer = new THREE.AnimationMixer(gltf.scene)
+            animations.forEach( clip => mixer.clipAction(clip).play())
+            scene.add(blenderCamera)
+            scene.add(gltf.scene)
+            scene.position.set(0, -0.8, 0)
+        }
+    )
+}
 
 const setMaterials = (c01, c02, c03, c04) =>[ new THREE.Color(c04), new THREE.Color(c03), new THREE.Color(c02), new THREE.Color(c01)]
 
 const getMaterials = (name) => {
     const materialColors = {
-        '_default': setMaterials("#85c7de", "#aed1e6", "#cfe8ef", "#ffffff", ), // hard to l
+        '_default': setMaterials("#85c7de", "#aed1e6", "#cfe8ef", "#ffffff", ),
         'Arbol': setMaterials('#3c6153', '#549367', '#78b885', '#9fc679'),
+        'Arbol2': setMaterials('#45705F', '#5B9F70', '#82C891', '#B5E28A'),
         'Moto': setMaterials('#0096c7', '#00b4d8', '#48cae4', '#90e0ef'),
         'MotoLlanta': setMaterials('#212529', '#343a40', '#495057', '#6c757d'),
         'MotoAsiento': setMaterials('#ccdbfd', '#d7e3fc', '#e2eafc', '#edf2fb'),
@@ -137,13 +135,12 @@ const getMaterials = (name) => {
         'Limite': setMaterials('#6a040f', '#9d0208', '#d00000', '#dc2f02'),
         'Piedra': setMaterials('#7f5539', '#b08968', '#ddb892', '#e6ccb2'),
         'Viento': setMaterials('#ffffff', '#ffffff', '#ffffff', '#ffffff'),
-        'Nube': setMaterials('#abc4ff', '#c1d3fe', '#e2eafc', '#edf2fb'),
+        'Nube': setMaterials('#abc4ff', '#c1d3fe', '#e2eafc', '#edf2fb')
     }
 
     if (materialColors.hasOwnProperty(name)) return materialColors[name]
     return materialColors['_default']
 }
-
 
 const getRenderer = () => {
     renderer.setSize(sizes.width, sizes.height)
@@ -151,26 +148,52 @@ const getRenderer = () => {
     renderer.outputEncoding = THREE.sRGBEncoding
 }
 
+const getCamera = () => {
+    blenderCamera.position.x = 0
+    blenderCamera.position.y = 1
+    blenderCamera.position.z = 4
+    scene.add(blenderCamera)
+}
+
+const getControls = () => {
+    controls.enableDamping = true
+    controls.enableZoom = true
+    controls.enablePan = true
+    controls.minDistance = 4 
+    controls.maxDistance = 4.25
+    controls.minPolarAngle = Math.PI * .5
+    controls.maxPolarAngle = Math.PI * .5
+    controls.minAzimuthAngle = - Math.PI * .01
+    controls.maxAzimuthAngle = Math.PI * .01
+}
 
 const tick = () => {
-	renderer.render(scene, blenderCamera)
-	effect.render(scene, blenderCamera)
-    window.requestAnimationFrame(tick)
-
+    requestAnimationFrame(tick)
     let delta = clock.getDelta()
     if ( mixer ) mixer.update( delta )
+
+    controls.update()
+    controls.target.clamp( minPan, maxPan )
+        
+    renderer.render(scene, blenderCamera)
+    effect.render(scene, blenderCamera)
 }
 
 window.addEventListener('resize', () => {
     sizes.width = window.innerWidth
     sizes.height = window.innerHeight
+
     blenderCamera.aspect = sizes.width / sizes.height
     blenderCamera.updateProjectionMatrix()
+
     renderer.setSize(sizes.width, sizes.height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 })
 
+getModel()
 getRenderer()
+getCamera()
+getControls()
 tick()
 
 
